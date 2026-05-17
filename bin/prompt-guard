@@ -21,6 +21,12 @@ async function main() {
     else if (a === '--dry-run') flags.dryRun = true;
     else if (a === '--source' && rest[i + 1]) { flags.source = rest[++i]; }
     else if (a === '--db-path' && rest[i + 1]) { flags.dbPath = rest[++i]; }
+    else if (a === '--limit' && rest[i + 1]) { flags.limit = rest[++i]; }
+    else if (a === '--per-project' && rest[i + 1]) { flags.perProject = rest[++i]; }
+    else if (a === '--top-projects' && rest[i + 1]) { flags.topProjects = rest[++i]; }
+    else if (a === '--concurrency' && rest[i + 1]) { flags.concurrency = rest[++i]; }
+    else if (a === '--retry-missing') { flags.retryMissing = true; }
+    else if (a === '--preview') { flags.preview = true; }
     else positional.push(a);
   }
   const promptText = positional.join(' ');
@@ -83,6 +89,33 @@ async function main() {
       }
       break;
     }
+    case 'label-llm': {
+      const { runLabelLlm } = require('../dist/commands/label-llm');
+      await runLabelLlm({
+        dryRun: flags.dryRun,
+        limit: flags.limit ? parseInt(flags.limit, 10) : undefined,
+        perProject: flags.perProject ? parseInt(flags.perProject, 10) : undefined,
+        topProjects: flags.topProjects ? parseInt(flags.topProjects, 10) : undefined,
+        concurrency: flags.concurrency ? parseInt(flags.concurrency, 10) : undefined,
+        retryMissing: flags.retryMissing,
+        dbPath: flags.dbPath,
+      });
+      break;
+    }
+    case 'backfill-reasons': {
+      const { runBackfillReasons } = require('../dist/commands/backfill-reasons');
+      await runBackfillReasons({ dbPath: flags.dbPath });
+      break;
+    }
+    case 'label-gold': {
+      const { runLabelGold } = require('../dist/commands/label-gold');
+      await runLabelGold({
+        preview: flags.preview,
+        limit: flags.limit ? parseInt(flags.limit, 10) : undefined,
+        dbPath: flags.dbPath,
+      });
+      break;
+    }
     default:
       console.error(`Unknown command: ${command}`);
       printHelp();
@@ -105,6 +138,9 @@ function printHelp() {
   console.log('  ingest [--source claude-code|cowork|all] [--verbose]');
   console.log('                     Ingest existing JSONL corpora into ~/.prompt-guard/corpus.db');
   console.log('  corpus stats       Inspect ingested corpus + sample-check hygiene filters');
+  console.log('  label-llm [--dry-run] [--per-project N] [--top-projects N] [--limit N]');
+  console.log('                     Run LLM extractor over rule-extracted clarifying pairs.');
+  console.log('                     Use --dry-run to print verdicts without DB writes.');
   console.log('');
   console.log('Options:');
   console.log('  --db-path <path>   Override DB path (default ~/.prompt-guard/corpus.db)');

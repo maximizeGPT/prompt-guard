@@ -37,6 +37,10 @@ export function openDb(opts: OpenOptions = {}): Database.Database {
     // Apply schema (CREATE IF NOT EXISTS — safe on re-open)
     db.exec(SCHEMA_SQL);
 
+    // Post-create column adds for existing DBs.
+    // SQLite throws if column exists; we ignore that specific error.
+    try { db.exec(`ALTER TABLE clarifying_pairs ADD COLUMN reason TEXT`); } catch (e) { /* already exists */ }
+
     // Record migration version
     const existing = db
       .prepare('SELECT version FROM schema_migrations WHERE version = ?')

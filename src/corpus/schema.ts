@@ -177,8 +177,12 @@ CREATE TABLE IF NOT EXISTS clarifying_pairs (
     extractor_version       TEXT,
     confidence              REAL,
     extracted_at            TEXT NOT NULL,
-    is_in_gold_subset       INTEGER NOT NULL DEFAULT 0
+    is_in_gold_subset       INTEGER NOT NULL DEFAULT 0,
+    reason                  TEXT  -- LLM's stated reason (for llm rows); the developer's note (for manual rows)
 );
+
+-- Idempotent column add for existing DBs (SQLite ignores duplicate add).
+-- Wrapped in DO-nothing if exists logic via try/catch in the migrator.
 CREATE INDEX IF NOT EXISTS idx_clarpairs_originating ON clarifying_pairs(originating_prompt_id);
 CREATE INDEX IF NOT EXISTS idx_clarpairs_kind ON clarifying_pairs(clarification_kind);
 CREATE INDEX IF NOT EXISTS idx_clarpairs_method ON clarifying_pairs(extraction_method);
@@ -220,6 +224,23 @@ CREATE TABLE IF NOT EXISTS eval_runs (
     total_cost_usd      REAL,
     notes               TEXT
 );
+
+-- ============================================================
+-- Failed LLM extractor pairs — for retry-after-API-recovery.
+-- One row per (pair_id, attempt). Lets a future --retry-missing
+-- find errored pairs without re-querying upstream tables.
+-- ============================================================
+CREATE TABLE IF NOT EXISTS failed_extraction_pairs (
+    fail_id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    pair_id         INTEGER NOT NULL REFERENCES clarifying_pairs(pair_id),
+    extractor_version TEXT NOT NULL,
+    error_class     TEXT,
+    error_status    INTEGER,
+    error_message   TEXT,
+    attempted_at    TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_failed_pair ON failed_extraction_pairs(pair_id);
+CREATE INDEX IF NOT EXISTS idx_failed_status ON failed_extraction_pairs(error_status);
 
 CREATE TABLE IF NOT EXISTS eval_cases (
     eval_case_id            INTEGER PRIMARY KEY AUTOINCREMENT,

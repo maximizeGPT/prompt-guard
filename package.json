@@ -32,7 +32,7 @@
     "typescript": "^5.0.0"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.32.0",
+    "@anthropic-ai/sdk": "^0.95.1",
     "better-sqlite3": "^11.0.0",
     "chalk": "^4.1.2",
     "commander": "^11.0.0",
