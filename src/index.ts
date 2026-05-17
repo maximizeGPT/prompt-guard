@@ -2,27 +2,14 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { glob } from 'glob';
 import chalk from 'chalk';
+import type { ContextFile, CheckResult, CheckContext } from './checks/types';
+import type { Config } from './config-types';
+import { buildPipeline } from './checks/registry';
 
-interface ContextFile {
-  name: string;
-  content: string;
-  relevance: number;
-}
-
-interface CheckResult {
-  type: 'warning' | 'error' | 'info';
-  message: string;
-  suggestion?: string;
-}
-
-interface Config {
-  contextFiles: string[];
-  enabledChecks: string[];
-  autoInject: boolean;
-  confirmBeforeSend: boolean;
-  maxContextTokens: number; // Approximate token limit for context
-  modelLimits: Record<string, number>; // Model-specific limits
-}
+// Re-export for backward compat with existing consumers
+export type { ContextFile, CheckResult, CheckContext, Check } from './checks/types';
+export type { Config } from './config-types';
+export { ALL_CHECKS, buildPipeline } from './checks/registry';
 
 export class PromptGuard {
   private config: Config;
@@ -133,78 +120,41 @@ export class PromptGuard {
   }
 
   /**
-   * Check a prompt for missing context
+   * Check a prompt for missing context.
+   *
+   * Builds a CheckContext and runs each check in the registry whose id is
+   * listed in `config.enabledChecks`. Previously this method ignored that
+   * config field and ran a hardcoded sequence — fixed in MVP-2.
    */
   async check(promptText: string): Promise<CheckResult[]> {
+    const ctx = await this.buildCheckContext(promptText);
+    const pipeline = buildPipeline(this.config.enabledChecks);
     const results: CheckResult[] = [];
-    
-    // Check 1: Files mentioned
-    if (!this.hasFileReferences(promptText)) {
-      results.push({
-        type: 'warning',
-        message: 'No specific files mentioned',
-        suggestion: 'Add file paths like "src/auth/**" or "update login.js"'
-      });
+    for (const check of pipeline) {
+      // Gate on requirements. corpus-clarify requires ctx.corpus; until MVP-3
+      // wires the CorpusReader, ctx.corpus is undefined and the check is skipped.
+      if (check.requires === 'corpus' && !ctx.corpus) continue;
+      if (check.requires === 'context-files' && ctx.contextFiles.length === 0) continue;
+      results.push(...await check.run(ctx));
     }
-    
-    // Check 2: Tests mentioned
-    if (!this.hasTestReferences(promptText)) {
-      results.push({
-        type: 'warning',
-        message: 'No tests or validation criteria mentioned',
-        suggestion: 'Add "include tests" or "should handle X cases"'
-      });
-    }
-    
-    // Check 3: Success criteria
-    if (!this.hasSuccessCriteria(promptText)) {
-      results.push({
-        type: 'warning',
-        message: 'No clear success criteria',
-        suggestion: 'Add "should pass all tests" or "must handle 10k req/s"'
-      });
-    }
-    
-    // Check 4: Constraints
-    if (!this.hasConstraints(promptText)) {
-      results.push({
-        type: 'info',
-        message: 'No constraints mentioned',
-        suggestion: 'Consider adding "don\'t break existing API" or "keep under 100 lines"'
-      });
-    }
-
-    // Check 5: Local environment references (overfitting risk)
-    const localEnvIssues = this.checkLocalEnvReferences(promptText);
-    if (localEnvIssues.length > 0) {
-      results.push({
-        type: 'warning',
-        message: 'Prompt contains local environment references',
-        suggestion: `Remove: ${localEnvIssues.join(', ')}. Use relative paths and generic config instead.`
-      });
-    }
-
-    // Check 6: Context window size
-    const estimatedTokens = this.estimateTokens(promptText);
-    const contextFiles = await this.loadContext();
-    const contextTokens = contextFiles.reduce((sum, f) => sum + this.estimateTokens(f.content), 0);
-    const totalTokens = estimatedTokens + contextTokens;
-
-    if (totalTokens > this.config.maxContextTokens) {
-      results.push({
-        type: 'error',
-        message: `Context window will be exceeded (~${totalTokens} tokens)`,
-        suggestion: `Reduce context files or truncate content. Current: ${contextFiles.length} files, ${contextTokens} tokens of context. Try removing less relevant .md files.`
-      });
-    } else if (totalTokens > this.config.maxContextTokens * 0.8) {
-      results.push({
-        type: 'warning',
-        message: `Approaching context limit (~${totalTokens} tokens)`,
-        suggestion: 'Consider truncating context files or removing less relevant ones. Leave room for AI response.'
-      });
-    }
-
     return results;
+  }
+
+  /** Build a CheckContext for the registry pipeline. */
+  private async buildCheckContext(promptText: string): Promise<CheckContext> {
+    const contextFiles = await this.loadContext();
+    const promptTokens = this.estimateTokens(promptText);
+    const contextTokens = contextFiles.reduce((sum, f) => sum + this.estimateTokens(f.content), 0);
+    return {
+      prompt: promptText,
+      promptTokens,
+      contextFiles,
+      contextTokens,
+      config: this.config,
+      // corpus + projectId: undefined for MVP-2; wired in MVP-3
+      corpus: undefined,
+      projectId: undefined,
+    };
   }
 
   /**
@@ -417,78 +367,9 @@ export class PromptGuard {
     console.log('Model limits:', Object.keys(this.config.modelLimits).join(', '));
   }
 
-  // Helper methods
-  private hasFileReferences(prompt: string): boolean {
-    const filePatterns = [
-      /\b\w+\.(js|ts|jsx|tsx|py|go|rs|java|cpp|c|h)\b/,
-      /\b(src|lib|app|components|utils|tests?)\/[\w\/]+/,
-      /\*\.[\w]+/,  // *.js, *.ts, etc.
-      /\b(file|files|path|paths)\b/i
-    ];
-    return filePatterns.some(pattern => pattern.test(prompt));
-  }
-
-  private hasTestReferences(prompt: string): boolean {
-    const testPatterns = [
-      /\btest(s)?\b/i,
-      /\bspec\b/i,
-      /\bvalidation\b/i,
-      /\bverify\b/i,
-      /\bshould\s+\w+/i,
-      /\bmust\s+\w+/i
-    ];
-    return testPatterns.some(pattern => pattern.test(prompt));
-  }
-
-  private hasSuccessCriteria(prompt: string): boolean {
-    const criteriaPatterns = [
-      /\b(should|must|needs? to)\s+\w+/i,
-      /\bgoal\b/i,
-      /\bsuccess\b/i,
-      /\bcriteria\b/i,
-      /\bhandle\s+\d+/i,
-      /\bpass\b/i
-    ];
-    return criteriaPatterns.some(pattern => pattern.test(prompt));
-  }
-
-  private hasConstraints(prompt: string): boolean {
-    const constraintPatterns = [
-      /\b(don't|do not|never)\s+\w+/i,
-      /\bavoid\b/i,
-      /\blimit\b/i,
-      /\bmax\b/i,
-      /\bconstraint\b/i,
-      /\bwithout\s+breaking\b/i
-    ];
-    return constraintPatterns.some(pattern => pattern.test(prompt));
-  }
-
-  private checkLocalEnvReferences(prompt: string): string[] {
-    const issues: string[] = [];
-
-    // Check for absolute paths
-    if (/\/Users\/\w+|\/home\/\w+|C:\\Users\\\w+/.test(prompt)) {
-      issues.push('absolute paths (/Users/..., /home/...)');
-    }
-
-    // Check for local ports
-    if (/localhost:\d{4,5}/.test(prompt)) {
-      issues.push('localhost ports');
-    }
-
-    // Check for machine-specific terms
-    if (/\b(my mac|my laptop|my machine|my computer)\b/i.test(prompt)) {
-      issues.push('machine-specific references');
-    }
-
-    // Check for local file paths that aren't relative
-    if (/\/[a-z]+\/[a-z]+\/[^\s]+\.(js|ts|json)/i.test(prompt)) {
-      issues.push('absolute file paths');
-    }
-
-    return issues;
-  }
+  // Helper methods. The 6 per-check regex/heuristic methods that lived here
+  // were extracted to src/corpus/heuristics.ts in MVP-2 and are consumed by
+  // the new checks in src/checks/*.ts.
 
   private calculateRelevance(fileName: string): number {
     const relevanceMap: Record<string, number> = {
