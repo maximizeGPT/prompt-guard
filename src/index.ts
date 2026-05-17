@@ -145,15 +145,33 @@ export class PromptGuard {
     const contextFiles = await this.loadContext();
     const promptTokens = this.estimateTokens(promptText);
     const contextTokens = contextFiles.reduce((sum, f) => sum + this.estimateTokens(f.content), 0);
+
+    // Lazy-open the corpus DB if it exists. Checks that require corpus are
+    // skipped silently when undefined. `corpusDbPath: false` disables loading entirely.
+    let corpus: import('./corpus/reader').CorpusReader | undefined = undefined;
+    if (this.config.corpusDbPath !== false) {
+      try {
+        const { dbFileStats, DEFAULT_DB_PATH } = await import('./corpus/db');
+        const dbPath = (typeof this.config.corpusDbPath === 'string')
+          ? this.config.corpusDbPath
+          : DEFAULT_DB_PATH;
+        if (dbFileStats(dbPath).exists) {
+          const { CorpusReader } = await import('./corpus/reader');
+          corpus = new CorpusReader(dbPath);
+        }
+      } catch {
+        // corpus unavailable; corpus-required checks will skip
+      }
+    }
+
     return {
       prompt: promptText,
       promptTokens,
       contextFiles,
       contextTokens,
       config: this.config,
-      // corpus + projectId: undefined for MVP-2; wired in MVP-3
-      corpus: undefined,
-      projectId: undefined,
+      corpus,
+      projectId: undefined,  // explicit project_id resolution lands with v0.5 init
     };
   }
 

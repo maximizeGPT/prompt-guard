@@ -69,11 +69,13 @@ describe('Check registry', () => {
       expect(results[0].message).toContain('files');
     });
 
-    it('corpus-clarify is skipped when no corpus is wired (MVP-2 stub)', async () => {
+    it('corpus-clarify is skipped when no corpus is wired', async () => {
+      // Explicitly disable corpus loading so the check's requires: 'corpus' gate skips it.
       const guard = new PromptGuard({
         enabledChecks: ['corpus-clarify'],
         contextFiles: [],
         maxContextTokens: 1000,
+        corpusDbPath: false,
       });
       const results = await guard.check('refactor auth');
       expect(results.length).toBe(0);

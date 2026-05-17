@@ -48,14 +48,9 @@ export interface CheckResult {
   diagnostics?: Record<string, unknown>;
 }
 
-/**
- * Forward-declaration for CorpusReader. Real impl arrives with MVP-3.
- * For MVP-2 the corpus check stub takes no real corpus.
- */
-export interface CorpusReader {
-  // Placeholder — real shape lands in MVP-3
-  isOpen(): boolean;
-}
+// Re-export the real CorpusReader from corpus/reader.ts. MVP-3 supersedes
+// the MVP-2 forward declaration.
+export type { CorpusReader } from '../corpus/reader';
 
 export interface CheckContext {
   prompt: string;
@@ -64,7 +59,7 @@ export interface CheckContext {
   contextTokens: number;
   config: Config;
   /** Defined when the corpus DB exists; undefined otherwise. */
-  corpus?: CorpusReader;
+  corpus?: import('../corpus/reader').CorpusReader;
   /** Resolved by orchestrator from cwd hash or .prompt-guard.json. */
   projectId?: string;
 }

@@ -121,6 +121,11 @@ async function main() {
       await runDedupePrompts({ dryRun: flags.dryRun, dbPath: flags.dbPath });
       break;
     }
+    case 'learn': {
+      const { runLearn } = require('../dist/commands/learn');
+      await runLearn({ prompt: promptText, dbPath: flags.dbPath });
+      break;
+    }
     default:
       console.error(`Unknown command: ${command}`);
       printHelp();

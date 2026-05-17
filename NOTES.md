@@ -20,14 +20,24 @@ just to broaden the project list — that adds noise, not signal.
 Re-evaluate the question-generation prompt's in-context examples once we
 have ≥2 design partners' data; the DemoSaaS examples may not generalize.
 
-## Synthetic-prompt filter is reactive
+## Synthetic-prompt filter is reactive — SCHEDULED post-MVP-4
 
-The `isSyntheticPrompt` function in `src/corpus/labeler.ts` is intentionally
-a regex-per-pattern detector. Each new corpus will need its own round of
-paste-back / harness / shell pattern filters. v0 fine.
+**Status promoted from "tracked" to "scheduled refactor" (2026-05-10):**
+The regex-per-pattern synthetic-prompt filter has now bitten v0 development
+THREE times in distinct subsystems:
 
-**Refactor trigger:** ~3 design partners OR ~15 patterns total in
-`isSyntheticPrompt`, whichever comes first.
+1. **Rule extractor** (MVP-1) — paste-backs, session-resumes, harness messages
+   inflating false-positive clarifying-pair count
+2. **Hand-labeling** (MVP-1.5) — same patterns surfacing as gold candidates;
+   required re-tuning before labeling could start
+3. **BM25 retrieval** (MVP-3) — same patterns dominating top-K results,
+   crowding out real signal; required a third copy of the filter
+
+Three occurrences in three subsystems crosses the threshold from "track and
+defer" to "schedule and ship." Promoting this from v1 refactor target to the
+**next-priority refactor after MVP-4 ships.**
+
+**Original refactor trigger** (~3 design partners OR ~15 patterns) — superseded.
 
 **Refactor approach when we hit it:**
 - Use the cleaned hand-labeled gold subset as training data (positive
