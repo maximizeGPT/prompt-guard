@@ -1,93 +1,97 @@
 # Project Context
 
 ## Overview
-prompt-guard-cli is a context-aware prompt enhancement tool for AI coding agents. It reads project documentation files (PROJECT.md, CONTEXT.md, etc.) and automatically injects relevant context into prompts before sending them to Claude, Cursor, or other AI coding agents.
+
+`prompt-guard-cli` is a context-aware prompt enhancement tool for AI coding agents, with two operating modes:
+
+1. **Static context injection** — reads `.md` files in the project root (PROJECT.md, CONTEXT.md, etc.) and injects them into prompts before they go to the AI. The original mode.
+2. **Corpus-grounded clarification** (v0.2) — ingests past developer-AI conversations into a local SQLite corpus and uses Claude Sonnet 4.6 to propose specific clarifying questions grounded in past prompts before sending vague new prompts.
 
 ## Problem Solved
-Developers waste time with generic AI responses because the AI lacks project context. prompt-guard-cli bridges this gap by ensuring every prompt includes relevant project details, coding standards, and constraints.
+
+Developers waste cycles iterating with AI agents on prompts that lack context the AI can't infer. v0.1 addresses this by injecting project documentation. v0.2 addresses it more deeply by surfacing the specific past clarifications that resolved similar ambiguities before — first-shot correctness.
 
 ## Tech Stack
-- **Language:** TypeScript 5.0+
-- **Runtime:** Node.js 18+
-- **Package Manager:** npm
+
+- **Language:** TypeScript 5+ (strict mode)
+- **Runtime:** Node 18+
+- **Storage:** SQLite via `better-sqlite3` (synchronous, embedded)
+- **Retrieval:** SQLite FTS5 (BM25) — no embeddings dependency in v0.2
+- **LLM:** Claude Sonnet 4.6 via `@anthropic-ai/sdk@0.95+` with prompt caching
+- **Build:** `tsc`
 - **Testing:** Jest 29+
-- **Build:** TypeScript Compiler (tsc)
 
 ## Dependencies
-- **chalk:** Terminal styling and colors
-- **commander:** CLI argument parsing
-- **glob:** File pattern matching
+
+- **@anthropic-ai/sdk** — Sonnet 4.6 calls for question generation and LLM-extractor
+- **better-sqlite3** — corpus DB (~/.prompt-guard/corpus.db)
+- **chalk** — terminal output
+- **commander** — declared but unused (CLI dispatch is hand-rolled)
+- **glob** — file pattern matching for ingestion
 
 ## Architecture
 
 ### Entry Points
-- **CLI:** `bin/prompt-guard` — Main command-line interface
-- **Library:** `dist/index.js` — Programmatic API
 
-### Core Modules
-- **src/index.ts** — Main PromptGuard class with check/enhance/init/config
-- **src/smart-relevance.ts** — Context relevance scoring algorithm
+- **CLI:** `bin/prompt-guard` — hand-rolled dispatcher (not commander)
+- **Library:** `dist/index.js` — exports `PromptGuard`, check registry, types
 
-### Key Features
-1. **Prompt Checking:** 6 built-in checks (files, tests, criteria, constraints, local-env, context-window)
-2. **Context Enhancement:** Auto-injects PROJECT.md, CONTEXT.md, AGENTS.md, SOUL.md
-3. **Smart Truncation:** Respects token limits, includes most relevant context first
-4. **Local Env Sanitization:** Strips absolute paths, API keys, machine-specific config
-5. **Relevance Scoring:** Keyword-based matching to prioritize context files
+### Top-level modules (`src/`)
 
-### Distribution
-- **npm package:** prompt-guard-cli
-- **VS Code Extension:** vscode-extension/ (separate package)
-- **Cursor Integration:** cursor-integration/cursor-guard.sh
+- **`index.ts`** — `PromptGuard` class. Orchestrates check pipeline via the registry.
+- **`config-types.ts`** — `Config` interface (extracted to avoid circular deps)
+- **`smart-relevance.ts`** — legacy keyword-overlap scorer for static-context path (unwired in v0.2 main flow)
 
-## File Structure
-```
-prompt-guard/
-├── bin/prompt-guard          # CLI entry point
-├── src/
-│   ├── index.ts              # Core library
-│   └── smart-relevance.ts    # Relevance scoring
-├── dist/                     # Compiled JavaScript
-├── tests/                    # Jest test suite
-├── vscode-extension/         # VS Code extension
-├── cursor-integration/       # Cursor wrapper scripts
-└── examples/                 # Usage examples
-```
+### Checks (`src/checks/`) — registry pattern
+
+- **`types.ts`** — `Check`, `CheckContext`, `CheckResult`, `ClarifyingQuestion`, `ClarificationKind`
+- **`registry.ts`** — `ALL_CHECKS[]` + `buildPipeline(enabled[])` filter
+- **`files.ts`, `tests.ts`, `criteria.ts`, `constraints.ts`, `local-env.ts`, `context-window.ts`** — six rule-based checks consuming `corpus/heuristics.ts`
+- **`corpus-clarify.ts`** — v0.2 corpus-grounded check (uses CorpusReader + QuestionGenerator)
+
+### Corpus (`src/corpus/`)
+
+- **`schema.ts`** — full SQLite DDL incl. FTS5 + clarifying_pairs + eval_runs/eval_cases
+- **`db.ts`** — opener, WAL pragmas, idempotent column ALTERs for migrations
+- **`env.ts`** — minimal dotenv loader (reads ANTHROPIC_API_KEY from ~/.env)
+- **`heuristics.ts`** — shared regex taggers (`tagPrompt`, `detectLocalEnvIssues`)
+- **`parsers/`**
+  - **`claude-code.ts`** — `~/.claude/projects/*/[uuid].jsonl`
+  - **`cowork.ts`** — `~/Library/Application Support/Claude/local-agent-mode-sessions/*/*/local_*/audit.jsonl` + manifest sibling
+  - **`shared.ts`** — `extractUserText`, `flattenAssistantContent`, JSONL iterator
+- **`writer.ts`** — session writes, project ID derivation (manifest title for Cowork, cwd basename for Claude Code)
+- **`snapshots.ts`** — content-addressed code snapshot ingestion (Cowork outputs/ + ~/.Trash)
+- **`labeler.ts`** — outcome labeler (Jaccard hash matching) + rule clarifying-pair extractor
+- **`llm-extractor.ts`** — Sonnet 4.6 review of rule pairs (v1.1 system prompt with 7-kind taxonomy)
+- **`reader.ts`** — `CorpusReader` (BM25 retrieval, project-scoped + global fallback, synthetic-prompt filter)
+- **`question-gen.ts`** — `ClaudeQuestionGenerator` (v4 system prompt, structured output via tool_use)
+- **`scoring.ts`** — `scoreCase`, `aggregate`, jaccard + KIND_MATCH_FLOOR (0.5)
+
+### Eval (`src/eval/`)
+
+- **`patterns.json`** — vague-verb regex, live-vs-local detectors (config-driven; extend without rebuild)
+- **`detect.ts`** — `detectVagueVerb`, `detectVerbDisambiguationQuestion`, `detectLiveVsLocalQ2`
+- **`shape-coverage-prompts.json`** — 20 curated prompts (5 each: should-skip, cross-project, adversarial-vague, demosaas-variant)
+
+### Commands (`src/commands/`)
+
+- `ingest.ts`, `stats.ts`, `dedupe-prompts.ts`, `label-llm.ts`, `label-gold.ts`, `backfill-reasons.ts`, `learn.ts`, `eval.ts`
+
+### Tests (`tests/`)
+
+15 Jest tests across `index.test.ts` + `registry.test.ts`. Tests cover check behavior, token estimation, sanitization, registry construction, `enabledChecks` filtering, corpus-clarify stub gating.
 
 ## Coding Conventions
-- **Style:** ESLint recommended + TypeScript strict
-- **Naming:** camelCase for functions/variables, PascalCase for classes
-- **Comments:** JSDoc for public APIs, inline for complex logic
-- **Error Handling:** Try-catch with meaningful error messages
-- **Logging:** Use chalk for colored terminal output
 
-## Constraints
-- **Performance:** <100ms for prompt checking, <500ms for enhancement
-- **Bundle Size:** Keep npm package under 100KB
-- **Compatibility:** Node.js 18+, macOS/Linux/Windows
-- **Security:** Never log or expose API keys, tokens, or credentials
-- **Privacy:** All processing local — no data sent to external servers
+See [CONTEXT.md](./CONTEXT.md). TypeScript strict mode, async/await over raw Promises, chalk for terminal output, JSDoc on public APIs, descriptive variable names over comments.
 
-## Testing Requirements
-- **Unit Tests:** All public methods
-- **Coverage:** 80% minimum
-- **Integration:** CLI commands, file I/O, config loading
-- **Edge Cases:** Empty prompts, large files, missing context files
+## Performance Constraints
 
-## Performance Targets
-- Prompt check: <50ms
-- Context enhancement: <200ms
-- Memory usage: <50MB for typical projects
+- **Ingest:** ~2 sec for 181 sources on Mac M4 16GB. Idempotent.
+- **Eval (gold):** 38 cases × ~5 sec/call sequential ≈ 3 min. Cost ~$0.30.
+- **Learn (single prompt):** ~5 sec, ~$0.005-0.01/call.
+- **Build:** `tsc` ~1 sec.
 
-## Release Process
-1. Update version in package.json
-2. Run tests: `npm test`
-3. Build: `npm run build`
-4. Publish: `npm publish --access public`
-5. Tag release on GitHub
+## Privacy
 
-## Future Roadmap
-- VS Code extension marketplace publish
-- Semantic context matching (embeddings)
-- Team-shared context templates
-- CI/CD integration
+Corpus stays local in `~/.prompt-guard/corpus.db`. Anthropic API calls only when `learn` or `eval` runs. Past prompts retrieved by BM25 are sent as context to the API.

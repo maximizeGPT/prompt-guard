@@ -58,29 +58,11 @@ The corpus-grounded path is a six-stage pipeline:
 
 The eval harness scores generated questions against hand-labeled gold using jaccard-over-tokens + a kind-match floor.
 
-## Baseline metrics (v0.2, May 2026)
+## Baseline (v0.2, May 2026)
 
-On a 38-case hand-labeled gold subset from one developer's (Mohammed Wasif's) corpus:
+On a 38-case hand-labeled gold subset: **mean overlap@3 = 0.283**, kind-match (any of top-3) = 50%. Strongest slice: `domain-context` at 0.397.
 
-| Metric | Value |
-|---|---|
-| Mean overlap@3 | **0.283** |
-| Kind-match (any of top-3) | **50.0%** |
-| Per-kind: domain-context | 0.397 (highest — taxonomy addition from hand-labeling discoveries) |
-| Per-kind: success-criteria | 0.308 |
-| Per-kind: file-scope | 0.241 |
-| Per-kind: constraint | 0.097 (n=2, single-digit slice) |
-| Total project cost | ~$5.30 of $15 cap |
-
-See [SHIP.md](./SHIP.md) for the full results write-up, methodology, and limitations.
-
-## Honest limitations
-
-- **Corpus is small and skewed.** 38 hand-labeled pairs from one developer's work, 95% from one project (DemoSaaS). The system performs best on DemoSaaS-like prompts; cross-project retrieval works via fallback but is untested at scale.
-- **Jaccard scoring has a soft ceiling.** ~5-10% of gold pairs are "inherent ceiling" cases where the clarification is strategic intent not inferable from the prompt alone. Maximum measurable overlap@3 is ~0.30-0.40 for jaccard.
-- **Kind-match floor is brittle on boundary cases.** Questions that live on category boundaries (e.g. success-criteria vs other) can drift kind labels run-to-run, costing 0.4 score per case. Tracked as v0.5 refinement target.
-- **Verb-disambiguation capture is 4-7/21.** When a prompt has a vague verb (set up / fix / improve / handle / build), the system fires a verb-disambiguation question ~20-30% of the time. Improvable.
-- **Synthetic-prompt filter is reactive.** Regex-per-pattern. Will need refactor to a unified classifier at ~3 design partners.
+Full results, methodology, per-kind breakdown, limitations, and reproduction in **[SHIP.md](./SHIP.md)**.
 
 ## Architecture
 
