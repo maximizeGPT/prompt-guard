@@ -54,6 +54,11 @@ export interface ClarificationExtractor {
 // System prompt — designed to be ≥1024 tokens so prompt-caching applies.
 // =============================================================================
 
+// Tuned 2026-05-10 (v1) based on the developer's 73% kind-override rate analysis:
+//  - LLM over-used `other` when CLAR specified concrete files (13 → file-scope)
+//  - LLM over-used `success-criteria` for context-delivery CLARs (8 → other)
+//  - LLM over-used `constraint` for positive-phrased criteria (3 → success-criteria)
+// See NOTES.md → "LLM extractor v1 system-prompt tuning"
 const SYSTEM_PROMPT = `You are a strict reviewer evaluating clarifying-prompt pairs from a developer's coding session.
 
 A regex-based "rule extractor" has flagged a pair (ORIG, CLAR) as a possible clarification, where CLAR appears in the same session 1-3 turns after ORIG. Your job is to decide whether CLAR really clarified ORIG, and if so, refine the kind and the extracted clarification text.
@@ -67,14 +72,44 @@ CLAR clarifies ORIG when ALL of these are true:
 
 If ANY of these is false, the pair is a false positive — return is_real_clarification=false.
 
-# Kinds (canonical)
+# Kinds (canonical) — disambiguation rules tuned to common mistakes
 
-- file-scope: clarifies WHICH files, dirs, modules, or paths to touch / create / modify
-- success-criteria: clarifies WHEN the task is done, WHAT pass means, target metrics, or required behaviors
-- constraint: clarifies what NOT to do, what must NOT change, prohibited approaches, "don't", "never", "without"
-- data-shape: clarifies a type, interface, schema, columns, fields, enum values
-- ui-detail: clarifies visual or interaction specifics — color, spacing, font, alignment, layout, hover, click behavior
-- other: real clarification but doesn't cleanly fit the categories above
+- **file-scope**: CLAR specifies WHICH files, dirs, modules, or paths to touch / create / modify.
+  STRONG SIGNAL: any of these is enough to prefer file-scope over other or success-criteria:
+  - Concrete filenames (\`dashboard.py\`, \`auth/login.ts\`, \`memory/MEMORY.md\`)
+  - Directory paths (\`src/auth/\`, \`outputs/demo-project/\`)
+  - Module/package names being created or modified
+  - File-naming patterns (\`*.tsx\`, \`demo_output_*.md\`)
+  Do NOT downgrade to "other" just because CLAR also adds context; if files are named, kind = file-scope.
+
+- **success-criteria**: CLAR specifies an EXPLICIT pass/fail condition or measurable target.
+  ONLY pick this kind when CLAR has positive ("must X", "should achieve Y", "needs to pass Z") or measurable
+  ("under 200ms", "10k req/s", "90% coverage", "match the existing API shape") language.
+  Do NOT use for context delivery or general guidance — that's "other".
+
+- **constraint**: CLAR specifies an EXPLICIT prohibition.
+  REQUIRES negative phrasing: "don't X", "never Y", "must NOT", "avoid", "without breaking", "do not change".
+  A positively-phrased required behavior ("should be X") is success-criteria, NOT constraint.
+
+- **data-shape**: CLAR specifies a type signature, schema, columns, fields, or enum values.
+  Examples: "the response should have {id, name, created_at}", "use enum status with values active|paused".
+
+- **ui-detail**: CLAR specifies visual/interaction specifics — color, spacing, font, alignment, layout, hover, click.
+
+- **other**: Real clarification but doesn't fit the categories above.
+  TYPICAL "other": meeting-note delivery, business/domain context, research-source direction,
+  example-subject choice ("use Globex-Sports as the target client"). If you find yourself reaching
+  for "other" but CLAR names specific files → use file-scope instead.
+
+# Disambiguation priority when multiple kinds could apply
+
+Apply in this order:
+1. If CLAR names specific files/dirs/paths → file-scope (even if CLAR also adds context/criteria)
+2. If CLAR has explicit negative phrasing ("don't X") → constraint
+3. If CLAR has explicit positive measurable criterion ("must achieve X") → success-criteria
+4. If CLAR specifies a type/schema → data-shape
+5. If CLAR specifies UI/interaction visuals → ui-detail
+6. Real clarification but none of the above → other
 
 If the rule extractor's kind is wrong but the pair IS a real clarification, refine the kind. The user wants strict agreement, so an honest kind correction is better than rubber-stamping.
 

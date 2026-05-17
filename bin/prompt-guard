@@ -116,6 +116,11 @@ async function main() {
       });
       break;
     }
+    case 'dedupe-prompts': {
+      const { runDedupePrompts } = require('../dist/commands/dedupe-prompts');
+      await runDedupePrompts({ dryRun: flags.dryRun, dbPath: flags.dbPath });
+      break;
+    }
     default:
       console.error(`Unknown command: ${command}`);
       printHelp();

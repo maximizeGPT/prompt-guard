@@ -130,6 +130,38 @@ session-ends-in-revert patterns, lower threshold to 0.3 or use a
 basename-Jaccard secondary signal. NOT now — current 0 is correct
 for current corpus.
 
+## LLM extractor v1 system-prompt tuning (2026-05-10)
+
+After the developer's 38-pair hand-label session, kind-override rate was 73% (27 of
+37 accepts). Three dominant correction patterns drove the v1 tuning:
+
+| Pattern (LLM → Mohammed) | Count | Root cause |
+|---|---|---|
+| `other` → `file-scope` | 13 | LLM downgrading to "other" when CLAR added context, even though concrete files were named |
+| `success-criteria` → `other` | 8 | LLM over-detecting criteria for context-delivery CLARs (meeting notes, etc.) |
+| `constraint` → `success-criteria` | 3 | LLM treating positively-phrased required behaviors as constraints |
+
+**v1 system prompt changes (src/corpus/llm-extractor.ts):**
+1. Strengthened **file-scope** definition with concrete signal list (filenames, dirs,
+   module names, file-naming patterns) + explicit "don't downgrade to other just
+   because CLAR also adds context."
+2. Tightened **success-criteria** to require positive measurable language; explicitly
+   redirected context delivery to `other`.
+3. Tightened **constraint** to require negative phrasing only; positive required
+   behaviors are success-criteria.
+4. Added a **disambiguation priority** section listing the order to apply when
+   multiple kinds could fit.
+
+**Not yet validated:** v1 system prompt has NOT been A/B tested against v0. To
+validate without losing the existing 38-pair gold subset:
+1. Add a `--extractor-version` flag to `label-llm` that tags rows
+2. Re-extract a sample of, say, 20 random pairs under v1
+3. Compare v1 verdicts to the developer's manual labels on those pairs
+4. If v1 override rate drops below ~30%, ship v1 as default
+
+Deferred until MVP-3 begins (question-gen reuses the same model + system-prompt
+style, so v1 calibration validates two things at once).
+
 ## Parser duplicates user messages on Claude Code replay events
 
 **Bug surfaced during MVP-1.5 hand-labeling (2026-05-10):** Claude Code emits

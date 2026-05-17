@@ -36,6 +36,10 @@ export async function parseClaudeCodeFile(filePath: string): Promise<ParsedSessi
   let firstQueueOp: string | undefined;
 
   for await (const ev of iterateJsonl(filePath)) {
+    // Claude Code emits each user message twice on session resume — once as the
+    // canonical event, once with `isReplay: true`. Skip the replay copies to
+    // avoid duplicate prompt rows. See NOTES.md → "Parser duplicates…"
+    if (ev.isReplay === true) continue;
     const t = ev.type as string | undefined;
     const ts = toIso(ev.timestamp);
     if (ts) {

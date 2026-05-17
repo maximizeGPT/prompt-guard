@@ -75,6 +75,8 @@ export async function parseCoworkSession(auditPath: string): Promise<ParsedSessi
   let firstUserContent: string | undefined;
 
   for await (const ev of iterateJsonl(auditPath)) {
+    // Skip replay events (same UUID as canonical, different timestamp, isReplay flag).
+    if (ev.isReplay === true) continue;
     const t = ev.type as string | undefined;
     // Cowork uses snake_case `_audit_timestamp` and ISO strings (we observed).
     const ts = toIso(ev._audit_timestamp || ev.timestamp);
