@@ -23,26 +23,32 @@ Ingests your past conversations from Claude Code and Cowork, builds a local SQLi
 ```bash
 prompt-guard ingest --source all                 # parses ~/.claude/projects + ~/Library/.../local-agent-mode-sessions
 prompt-guard corpus stats                        # sanity-check the ingested data
-prompt-guard learn "build the new feature for the acme pitch"
+prompt-guard learn "refactor the auth handler"
 ```
 
-Example output:
+Example output (synthetic — illustrative of the format):
 
 ```
-PROMPT: "build the new feature for the acme pitch"
+PROMPT: "refactor the auth handler"
 
 2 clarifying questions grounded in your corpus
 
-Q1 [domain-context, conf=0.92]
-  Which Acme-meeting automation area are you building — Agency Analytics Reporting,
-  the SOP/workflow automation, or a new feature for the existing dashboard.py demo
-  (like the ones rewritten for Globex Sports)?
+Q1 [file-scope, conf=0.91]
+  Which auth handler — `src/auth/login.ts` (the JWT flow from the OAuth migration),
+  `src/middleware/auth-check.ts` (the bearer-token verifier), or somewhere else?
   Grounded in:
-    • id=5321: "Areas of the business they wanna automate: * CMO, CTO and the Acme..."
-    • id=12244: "You need to rewrite the demo content generators in dashboard.py..."
+    • past prompt id=4231: "migrate src/auth/login.ts from session cookies to JWT
+      with 24h expiry. Don't break the /api/v1/auth response shape..."
+    • past prompt id=4502: "add bearer-token check to src/middleware/auth-check.ts
+      for the new /api/v2 routes"
 
-Q2 [file-scope, conf=0.82]
-  Is this going into the existing demo-project dashboard.py, or a new file/project?
+Q2 [success-criteria, conf=0.84]
+  Goal: extract shared logic into a helper, swap to a new library
+  (like the move from `jsonwebtoken` to `jose` you started in turn 891), or fix a
+  specific bug?
+  Grounded in:
+    • past prompt id=5187: "swap our auth from jsonwebtoken to jose — the old lib
+      has CVE-2024-... and isn't getting patched"
 ```
 
 ## How it works

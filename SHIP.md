@@ -2,7 +2,7 @@
 
 **Shipped:** 2026-05-11
 **Commit:** `6427970` (tagged `mvp-4-baseline`)
-**Author:** Mohammed Wasif + Claude (Anthropic)
+**Built with:** Claude Sonnet 4.6 (Anthropic) via Claude Code
 
 This document is a snapshot of what was built and measured. Future commits compare against these numbers. Honest framing — no overselling.
 

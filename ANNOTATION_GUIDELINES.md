@@ -51,7 +51,7 @@ If CLAR is a paste-back of:
 
 → **Reject**, even if the content happens to match a kind regex.
 
-Mixed cases (Mohammed-typed prefix + pasted content): accept ONLY if the human-typed part substantively clarifies ORIG. Otherwise reject.
+Mixed cases (human-typed prefix + pasted content): accept ONLY if the human-typed part substantively clarifies ORIG. Otherwise reject.
 
 ### Rule 2: CLAR must be topically connected to ORIG
 

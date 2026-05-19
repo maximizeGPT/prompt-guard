@@ -64,3 +64,17 @@ Workaround: nuke + fresh ingest. Acceptable since ingest takes ~2s. Low fix prio
 ## v0.5 prompt-engineering targets (post-MVP-4)
 
 Tracked in [SHIP.md § v0.5 prompt-engineering targets](./SHIP.md). Three items: verb-disam recovery, kind-match floor brittleness, inherent-ceiling case documentation.
+
+## v0.5 corpus anonymization — SCHEDULED (surfaced 2026-05-18)
+
+Surfaced during OSS prep: scrubbing client identifiers from the codebase + git history exposed how easily corpus content leaks into system prompts, docs, eval outputs, and screenshots. The whole point of this tool is other developers using it on their own corpus; without anonymization every adopter will leak the same way.
+
+Full spec in [PRIVACY_SPEC.md](./PRIVACY_SPEC.md). Summary:
+- Regex tier (emails, API keys, paths, URLs, IPs, credit cards) at ingest
+- Encrypted entity map at `~/.prompt-guard/entity-map.json.enc`
+- `--anonymize` flag on `ingest` (opt-in v0.5, default v0.6)
+- New commands: `anonymize-existing`, `reveal <case-id>`, `entities list/add/export`, `purge`
+- Separate `PRIVACY.md` user-facing doc
+- NER tier (personal names, orgs) deferred to v0.6+
+
+Effort: ~20 hours regex-tier-only. **Highest-priority v0.5 work** — blocks safe public adoption of the tool.
